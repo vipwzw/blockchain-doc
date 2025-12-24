@@ -456,7 +456,7 @@ $$
 j = \max\{k : \sum_{i=0}^{k-1} B(i; n, p) \leq \frac{\beta}{2^{256}}\}
 $$
 
-其中 $B(i; n, p)$ 是二项分布的累积分布函数，$n$ 是节点持有的微 Algo 数量。
+其中 $B(i; n, p)$ 是二项分布的累积分布函数， $n$ 是节点持有的微 Algo 数量。
 
 ```mermaid
 flowchart LR
@@ -595,12 +595,12 @@ flowchart LR
 | 指标 | 传统 PBFT | Algorand | 改进 |
 |------|-----------|----------|------|
 | **消息复杂度** | $O(n^2)$ | $O(\lambda n)$ | 从平方降到线性 |
-| **委员会规模** | $n$（全部节点）| $O(\lambda) \approx 3000$ | 固定常数 |
+| **委员会规模** | $n$ （全部节点）| $O(\lambda) \approx 3000$ | 固定常数 |
 | **单节点发送** | $O(n)$ 条 | $O(1)$ 条 | 常数条消息 |
 | **单节点接收** | $O(n)$ 条 | $O(\lambda)$ 条 | ≈ 3000 条 |
 | **带宽需求** | $O(n^2 \cdot |msg|)$ | $O(\lambda n \cdot |msg|)$ | 可扩展 |
 
-其中 $\lambda$ 是安全参数，决定委员会大小（通常 $\lambda \approx 3000$）。
+其中 $\lambda$ 是安全参数，决定委员会大小（通常 $\lambda \approx 3000$ ）。
 
 **Gossip 网络拓扑**：
 
@@ -1270,13 +1270,13 @@ flowchart TD
 
 **概率分析**：
 
-设 $n$ 为总节点数，$f$ 为协议参数（期望每槽领导者数），则每个节点被选中的概率为 $p = f/n$。
+设 $n$ 为总节点数， $f$ 为协议参数（期望每槽领导者数），则每个节点被选中的概率为 $p = f/n$ 。
 
 根据二项分布，精确公式为：
 
-- 空槽概率：$P(\text{empty}) = (1 - p)^n = \left(1 - \frac{f}{n}\right)^n$
-- 单领导者概率：$P(\text{single}) = \binom{n}{1} p (1-p)^{n-1} = f \cdot \left(1 - \frac{f}{n}\right)^{n-1}$
-- 多领导者概率：$P(\text{multi}) = 1 - P(\text{empty}) - P(\text{single})$
+- 空槽概率： $P(\text{empty}) = (1 - p)^n = \left(1 - \frac{f}{n}\right)^n$
+- 单领导者概率： $P(\text{single}) = \binom{n}{1} p (1-p)^{n-1} = f \cdot \left(1 - \frac{f}{n}\right)^{n-1}$
+- 多领导者概率： $P(\text{multi}) = 1 - P(\text{empty}) - P(\text{single})$
 
 **泊松近似条件**：
 
@@ -1292,13 +1292,13 @@ flowchart TD
 
 在实际区块链共识中（如 Algorand、Cardano），节点数 $n$ 通常为数千至数百万，而期望领导者数 $f$ 通常为 1-5，完全满足泊松近似条件。
 
-**泊松近似公式**（$n$ 很大，$p$ 很小，$f = np$ 适中）：
+**泊松近似公式**（ $n$ 很大， $p$ 很小， $f = np$ 适中）：
 
-- 空槽概率：$P(\text{empty}) \approx e^{-f}$
-- 单领导者概率：$P(\text{single}) \approx f \cdot e^{-f}$
-- 多领导者概率：$P(\text{multi}) \approx 1 - e^{-f} - f \cdot e^{-f}$
+- 空槽概率： $P(\text{empty}) \approx e^{-f}$
+- 单领导者概率： $P(\text{single}) \approx f \cdot e^{-f}$
+- 多领导者概率： $P(\text{multi}) \approx 1 - e^{-f} - f \cdot e^{-f}$
 
-**数值示例**（$f = 1$）：
+**数值示例**（ $f = 1$ ）：
 
 | 节点数 $n$ | 精确 $P(\text{empty})$ | 泊松近似 $e^{-1}$ | 相对误差 |
 |------------|------------------------|-------------------|----------|
