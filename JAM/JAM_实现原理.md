@@ -44,6 +44,262 @@ flowchart LR
 | **插槽** | 需要竞拍 | 按需付费 |
 | **灵活性** | 固定架构 | 高度通用 |
 
+### 1.4 区块链扩展方案对比
+
+根据 [JAM Gray Paper](https://graypaper.com/) 的分析，区块链技术面临五大核心驱动因素，而各方案在这些维度上的权衡决定了其设计取向。
+
+#### 1.4.1 Web3 五大驱动因素
+
+```mermaid
+flowchart TB
+    subgraph Goals[Web3 核心目标]
+        direction TB
+        R[🛡️ 弹性 Resilience<br/>抵抗停止、腐败、审查]
+        G[🔧 通用性 Generality<br/>图灵完备计算]
+        P[⚡ 性能 Performance<br/>快速、低成本]
+        C[🔗 一致性 Coherency<br/>状态因果关系、可组合性]
+        A[🚪 可访问性 Accessibility<br/>低门槛、无需许可]
+    end
+    
+    R --- G
+    G --- P
+    P --- C
+    C --- A
+```
+
+| 驱动因素 | 描述 | 挑战 |
+|---------|------|------|
+| **弹性** | 系统应该"不可阻挡"，无论任何经济主体的意愿、财富或权力 | 需要去中心化，牺牲效率 |
+| **通用性** | 图灵完备的规则集，支持任意复杂逻辑 | Bitcoin 做到了弹性但缺乏通用性 |
+| **性能** | 快速执行、低交易成本 | 与去中心化存在张力 |
+| **一致性** | 状态元素间的因果关系，应用可组合 | 与扩展性存在根本对立 |
+| **可访问性** | 创新门槛低：简单、快速、便宜、无需许可 | 复杂系统难以保持简单 |
+
+#### 1.4.2 规模-一致性对立原理（Size-Coherency Antagonism）
+
+Gray Paper 提出了一个关键原理：**随着系统状态空间增长，系统必然变得不那么一致**。
+
+```mermaid
+flowchart LR
+    subgraph Principle[规模-一致性对立]
+        S1[更多状态] --> S2[更大空间]
+        S2 --> S3[更大距离]
+        S3 --> S4[因果解决时间分散]
+        S4 --> S5[系统不一致]
+    end
+    
+    style S5 fill:#ff6b6b,color:#fff
+```
+
+**核心论点：**
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     规模-一致性对立 (Size-Coherency Antagonism)          │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  因果关系受速度限制（物理极限是光速 C）                                   │
+│                                                                         │
+│  1. 系统使用的状态越多 → 状态占用的空间越大                              │
+│  2. 空间越大 → 状态组件之间的平均距离和方差越大                          │
+│  3. 距离增加 → 因果解决时间（事件的所有正确影响被感知）变得分散           │
+│  4. 时间分散 → 系统出现不一致                                            │
+│                                                                         │
+│  结论：性能（规模）与一致性是天然对立的                                   │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 1.4.3 主流区块链方案对比
+
+```mermaid
+flowchart TB
+    subgraph Layer1[单体链方案]
+        BTC[Bitcoin<br/>🛡️弹性优先]
+        ETH[Ethereum L1<br/>🔧通用性优先]
+        SOL[Solana<br/>⚡性能优先]
+    end
+    
+    subgraph Layer2[分片/L2方案]
+        DOT[Polkadot<br/>平行链分片]
+        COSMOS[Cosmos<br/>IBC跨链]
+        ETHL2[Ethereum L2<br/>Rollups]
+    end
+    
+    subgraph NewGen[新一代方案]
+        JAM_Box[JAM<br/>大部分一致性]
+    end
+    
+    Layer1 -->|扩展需求| Layer2
+    Layer2 -->|一致性需求| NewGen
+```
+
+#### 1.4.4 各方案详细对比
+
+```mermaid
+quadrantChart
+    title Performance vs Coherency
+    x-axis Low Performance --> High Performance
+    y-axis Low Coherency --> High Coherency
+    quadrant-1 Ideal Zone
+    quadrant-2 Coherency First
+    quadrant-3 Needs Improvement
+    quadrant-4 Performance First
+    
+    Ethereum L1: [0.3, 0.85]
+    Bitcoin: [0.15, 0.9]
+    Solana: [0.85, 0.75]
+    Polkadot: [0.65, 0.45]
+    Cosmos: [0.6, 0.35]
+    Eth L2 Rollups: [0.7, 0.4]
+    JAM: [0.75, 0.7]
+```
+
+**图表说明：**
+- **X轴**：低性能 → 高性能
+- **Y轴**：低一致性 → 高一致性
+- **右上象限（Ideal Zone）**：理想区域，JAM 的目标位置
+
+| 方案 | 弹性 | 通用性 | 性能 | 一致性 | 可访问性 | 核心取舍 |
+|------|:----:|:------:|:----:|:------:|:--------:|----------|
+| **Bitcoin** | ⭐⭐⭐⭐⭐ | ⭐ | ⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐ | 牺牲通用性换取极致弹性 |
+| **Ethereum L1** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | 牺牲性能换取完全一致性 |
+| **Solana** | ⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐ | 牺牲去中心化换取高性能 |
+| **Polkadot** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐ | 分片扩展，牺牲跨链一致性 |
+| **Cosmos** | ⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐ | 独立链+IBC，弱一致性 |
+| **Eth L2 Rollups** | ⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐ | 依赖L1安全，跨L2不一致 |
+| **JAM** | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | 大部分一致性，平衡取舍 |
+
+#### 1.4.5 各方案架构图解
+
+```mermaid
+flowchart TB
+    subgraph Bitcoin_Arch[Bitcoin: 单链单状态]
+        BTC_Chain[区块链]
+        BTC_State[UTXO状态]
+        BTC_Chain --> BTC_State
+    end
+    
+    subgraph Eth_Arch[Ethereum L1: 单链全局状态]
+        ETH_Chain[区块链]
+        ETH_State[全局状态树<br/>World State]
+        ETH_EVM[EVM执行]
+        ETH_Chain --> ETH_EVM --> ETH_State
+    end
+    
+    subgraph Solana_Arch[Solana: 高性能单链]
+        SOL_Chain[区块链<br/>PoH时间戳]
+        SOL_State[账户状态]
+        SOL_Para[并行执行<br/>Sealevel]
+        SOL_Chain --> SOL_Para --> SOL_State
+    end
+```
+
+```mermaid
+flowchart TB
+    subgraph DOT_Arch[Polkadot: 中继链+平行链]
+        DOT_Relay[中继链<br/>共享安全]
+        DOT_P1[平行链1<br/>独立状态]
+        DOT_P2[平行链2<br/>独立状态]
+        DOT_P3[平行链3<br/>独立状态]
+        DOT_XCM[XCM跨链消息]
+        
+        DOT_Relay --> DOT_P1
+        DOT_Relay --> DOT_P2
+        DOT_Relay --> DOT_P3
+        DOT_P1 <-.->|异步| DOT_XCM
+        DOT_P2 <-.->|异步| DOT_XCM
+    end
+    
+    subgraph COSMOS_Arch[Cosmos: 独立链+IBC]
+        COSMOS_Hub[Cosmos Hub]
+        COSMOS_Z1[Zone 1<br/>独立验证者]
+        COSMOS_Z2[Zone 2<br/>独立验证者]
+        COSMOS_IBC[IBC协议]
+        
+        COSMOS_Hub <--> COSMOS_IBC
+        COSMOS_Z1 <--> COSMOS_IBC
+        COSMOS_Z2 <--> COSMOS_IBC
+    end
+    
+    subgraph ETH_L2_Arch[Ethereum L2: Rollups]
+        L1[以太坊 L1<br/>数据可用性+最终性]
+        L2_A[Rollup A<br/>排序器]
+        L2_B[Rollup B<br/>排序器]
+        Bridge[跨L2桥接]
+        
+        L2_A -->|提交证明| L1
+        L2_B -->|提交证明| L1
+        L2_A <-.->|慢速桥接| Bridge
+        L2_B <-.->|慢速桥接| Bridge
+    end
+```
+
+#### 1.4.6 JAM 的创新：大部分一致性（Mostly Coherent）
+
+```mermaid
+flowchart TB
+    subgraph JAM_Innovation[JAM 创新点]
+        direction TB
+        
+        subgraph InCore[In-Core 计算<br/>高度可扩展]
+            IC1[Refine阶段]
+            IC2[无状态并行]
+            IC3[大部分一致]
+        end
+        
+        subgraph OnChain[On-Chain 计算<br/>完全同步]
+            OC1[Accumulate阶段]
+            OC2[状态转换]
+            OC3[完全一致]
+        end
+        
+        InCore -->|流水线| OnChain
+    end
+    
+    style InCore fill:#4ecdc4,color:#000
+    style OnChain fill:#ff6b6b,color:#fff
+```
+
+**JAM 的关键创新：**
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    JAM: Mostly Coherent（大部分一致性）                  │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  传统分片方案（Polkadot/Cosmos/Eth L2）：                                │
+│    - 将系统分割成因果独立的子系统                                        │
+│    - 每个子系统内部一致，跨子系统完全不一致                              │
+│    - 类似细菌分裂：要么小而一致，要么大而分裂                            │
+│                                                                         │
+│  JAM 的中间路线：                                                        │
+│    - 不持久分割状态空间                                                  │
+│    - 引入 In-Core/On-Chain 二元计算模型                                  │
+│    - In-Core: 高度可扩展的"大部分一致"计算                              │
+│    - On-Chain: 完全同步的一致性计算                                      │
+│    - 异步性被限制在流水线长度内                                          │
+│    - 用"缓存亲和性"替代粗暴的分区                                       │
+│                                                                         │
+│  优势：                                                                  │
+│    ✅ 不依赖 SNARK（低成本、高性能）                                     │
+│    ✅ 避免中心化倾向                                                     │
+│    ✅ 保持应用可组合性                                                   │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 1.4.7 各方案问题总结
+
+| 方案 | 主要问题 | Gray Paper 引用 |
+|------|---------|----------------|
+| **Bitcoin** | 规则集有限，只支持固定发行代币和简单脚本 | "Bitcoin's rules allowed for an initial use-case, namely a fixed-issuance token" |
+| **Ethereum L1** | 单链扩展受限，gas 费用高昂 | 需要 L2 扩展方案 |
+| **Solana** | 客户端多样性不足，多次宕机，硬件要求高 | "Solana outage raises questions about client diversity" |
+| **Polkadot 1.0** | 跨平行链通信异步，一致性弱 | 分片导致因果关系断裂 |
+| **Cosmos** | 安全性独立，IBC 跨链延迟高 | 每条链需要自己的验证者集 |
+| **Eth L2 Rollups** | 排序器中心化，跨 L2 桥接慢且不安全 | "Ethereum's Rollups are Centralized" |
+
 ---
 
 ## 二、JAM 架构

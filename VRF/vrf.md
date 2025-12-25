@@ -1063,3 +1063,805 @@ flowchart TD
 | **适用场景** | 一般随机数生成 | 匿名场景（如区块链出块者选举） |
 
 Ring VRF 通过牺牲一定的效率（证明和验证复杂度从 $O(1)$ 增加到 $O(n)$ ），换取了强大的身份隐私保护，特别适用于需要匿名性的分布式系统场景。
+
+---
+
+## Bandersnatch Ring VRF：JAM 的核心密码学原语
+
+### 1. Bandersnatch 曲线概述
+
+Bandersnatch 是专门为 Polkadot/JAM 设计的椭圆曲线，由 Simon Masson、Antonio Sanso 和 Zhenfei Zhang 于 2021 年提出。它构建在 BLS12-381 曲线的标量域之上，专为高效的 Ring VRF 操作而优化。
+
+```mermaid
+flowchart TB
+    subgraph BLS["BLS12-381 曲线族"]
+        direction TB
+        BLS_G1["G₁ 群<br/>BLS签名"]
+        BLS_G2["G₂ 群<br/>配对运算"]
+        BLS_Scalar["标量域 Fr<br/>约 255 bit 素数"]
+    end
+    
+    subgraph Bandersnatch["Bandersnatch 曲线"]
+        direction TB
+        Band_Curve["定义在 Fr 上的<br/>扭曲 Edwards 曲线"]
+        Band_Order["群阶约 253 bit"]
+        Band_Props["支持高效 Ring VRF"]
+    end
+    
+    BLS_Scalar -->|"基域"| Band_Curve
+    
+    style BLS fill:#e1f5fe
+    style Bandersnatch fill:#f3e5f5
+```
+
+### 2. 数学定义
+
+#### 2.1 曲线方程
+
+Bandersnatch 是一条**扭曲 Edwards 曲线**，定义在 BLS12-381 的标量域 $\mathbb{F}_r$ 上：
+
+$$
+E: ax^2 + y^2 = 1 + dx^2y^2
+$$
+
+其中：
+- 基域 $\mathbb{F}_r$ 的模数 $r = $ `0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001`
+- 曲线参数 $a = -5$
+- 曲线参数 $d = $ `0x6389c12633c267cbc66e3bf86be3b6d8cb291627089a6e7a78c2d39ae35f99f`
+
+#### 2.2 群阶
+
+Bandersnatch 的群阶 $n$ 是一个大素数：
+
+$$
+n = 2^2 \cdot q
+$$
+
+其中 $q$ 是一个约 251 bit 的素数，群结构简单，便于密码学操作。
+
+#### 2.3 基点选择
+
+标准基点 $G$ 的坐标：
+
+```
+G.x = 0x29c132cc2c0b34c5743711777bbe42f32b79c022ad998465e1e71866a252ae18
+G.y = 0x2a6c669eda123e0f157d8b50badcd586358cad81eee464605e3167b6cc974166
+```
+
+### 3. 为什么选择 Bandersnatch？
+
+```mermaid
+flowchart TD
+    subgraph Advantages["Bandersnatch 的优势"]
+        direction TB
+        
+        subgraph Compat["兼容性"]
+            C1["与 BLS12-381 共享标量域"]
+            C2["可与 BLS 签名无缝集成"]
+            C3["复用现有基础设施"]
+        end
+        
+        subgraph Perf["性能"]
+            P1["Edwards 形式运算高效"]
+            P2["统一加法公式<br/>避免分支"]
+            P3["快速标量乘法"]
+        end
+        
+        subgraph Sec["安全性"]
+            S1["完全域"]
+            S2["无已知弱点"]
+            S3["抗侧信道攻击"]
+        end
+        
+        subgraph RingVRF["Ring VRF 优化"]
+            R1["支持高效 Ring 证明"]
+            R2["Pedersen VRF 支持"]
+            R3["SNARK 友好"]
+        end
+    end
+    
+    style Compat fill:#e1f5fe
+    style Perf fill:#e8f5e8
+    style Sec fill:#fff3e0
+    style RingVRF fill:#f3e5f5
+```
+
+### 4. Bandersnatch VRF 类型
+
+JAM 中使用的 Bandersnatch VRF 有多种变体：
+
+```mermaid
+flowchart TB
+    subgraph Types["Bandersnatch VRF 变体"]
+        direction TB
+        
+        Basic["基础 VRF<br/>Schnorr-based"]
+        Pedersen["Pedersen VRF<br/>带额外绑定"]
+        Ring["Ring VRF<br/>匿名版本"]
+    end
+    
+    subgraph JAM_Usage["JAM 中的应用"]
+        direction TB
+        
+        Ticket["jam_ticket_seal<br/>票据封印"]
+        Audit["jam_audit<br/>审计员选择"]
+        Fallback["jam_fallback_seal<br/>回退封印"]
+    end
+    
+    Ring --> Ticket
+    Basic --> Audit
+    Basic --> Fallback
+    
+    style Ring fill:#f3e5f5
+    style Ticket fill:#e8f5e8
+```
+
+### 5. Bandersnatch Ring VRF 数学原理
+
+#### 5.1 核心结构
+
+Bandersnatch Ring VRF 使用 **Pedersen VRF** 作为基础，结合环签名实现匿名性：
+
+```mermaid
+flowchart TD
+    subgraph Setup["系统设置"]
+        G["基点 G"]
+        H["辅助基点 H<br/>H = HashToCurve(seed)"]
+        Ring["公钥环 R = {P₁, ..., Pₙ}"]
+    end
+    
+    subgraph Keys["密钥结构"]
+        SK["私钥 x ∈ ℤq"]
+        PK["公钥 P = xG + kH<br/>(Pedersen 承诺形式)"]
+    end
+    
+    Setup --> Keys
+```
+
+#### 5.2 Pedersen VRF 基础
+
+与标准 VRF 不同，Pedersen VRF 使用**双基点结构**：
+
+$$
+P = xG + kH
+$$
+
+其中：
+- $x$ ：主私钥（用于 VRF 计算）
+- $k$ ：盲化因子（提供额外隐私保护）
+- $G$ ：主基点
+- $H$ ：辅助基点（ $H = \text{HashToCurve}(\text{seed})$ ）
+
+VRF 输出计算：
+
+$$
+Y = x \cdot H_{msg}
+$$
+
+其中 $H_{msg} = \text{HashToCurve}(message)$
+
+##### Pedersen VRF vs 标准 VRF 对比
+
+| 特性 | 标准 VRF | Pedersen VRF |
+|------|----------|--------------|
+| **公钥形式** | $P = xG$ | $P = xG + kH$ |
+| **VRF 输出** | $Y = xH_{msg}$ | $Y = xH_{msg}$ |
+| **证明内容** | DLEQ: $\log_G P = \log_{H_{msg}} Y$ | 更复杂的多方程证明 |
+| **盲化因子** | 无 | 有（ $k$ ） |
+| **匿名性** | 基础 | 增强（公钥可更新） |
+
+##### Pedersen VRF 证明过程
+
+Pedersen VRF 需要证明：**知道 $(x, k)$ 使得 $P = xG + kH$ 且 $Y = xH_{msg}$**
+
+```mermaid
+flowchart TD
+    subgraph Input["输入"]
+        SK["私钥 (x, k)"]
+        MSG["消息 m"]
+        PK["公钥 P = xG + kH"]
+    end
+    
+    subgraph Compute["计算"]
+        H_msg["H_msg = HashToCurve(m)"]
+        Y_out["Y = x · H_msg"]
+    end
+    
+    subgraph Prove["证明生成"]
+        direction TB
+        R1["选随机数 r, s ← ℤq"]
+        R2["承诺:<br/>A = rG + sH<br/>B = rH_msg"]
+        R3["挑战: c = Hash(P, H_msg, Y, A, B)"]
+        R4["响应:<br/>z_x = r + cx mod q<br/>z_k = s + ck mod q"]
+    end
+    
+    Input --> Compute --> Prove
+    
+    Prove --> Output["证明 π = (Y, A, B, z_x, z_k)<br/>或压缩形式 (Y, c, z_x, z_k)"]
+    
+    style Prove fill:#f3e5f5
+```
+
+**验证方程：**
+
+验证者检查：
+1. $z_x G + z_k H = A + cP$ （公钥绑定）
+2. $z_x H_{msg} = B + cY$ （VRF 正确性）
+
+**数学验证：**
+
+如果证明诚实（ $z_x = r + cx$ ， $z_k = s + ck$ ）：
+
+$$
+z_x G + z_k H = (r + cx)G + (s + ck)H = rG + sH + c(xG + kH) = A + cP \quad \checkmark
+$$
+
+$$
+z_x H_{msg} = (r + cx)H_{msg} = rH_{msg} + cxH_{msg} = B + cY \quad \checkmark
+$$
+
+#### 5.3 Pedersen Ring VRF 完整实现
+
+现在我们将 Pedersen VRF 扩展为 **Ring VRF**，实现匿名性。
+
+##### 与标准 Ring VRF 的关键差异
+
+| 方面 | 标准 Ring VRF（前文） | Pedersen Ring VRF (Bandersnatch) |
+|------|---------------------|----------------------------------|
+| **公钥形式** | $P_i = x_i G$ | $P_i = x_i G + k_i H$ |
+| **每分支承诺** | 2 个点 $(R_i, T_i)$ | 3 个点 $(A_i, B_i, C_i)$ |
+| **验证方程** | 2 条 | 3 条 |
+| **响应值** | 1 个 $z_i$ | 2 个 $(z_{x,i}, z_{k,i})$ |
+| **证明大小** | $O(n)$ | $O(2n)$ |
+
+##### 证明生成算法
+
+```python
+def pedersen_ring_vrf_prove(
+    x_s: Scalar,        # 主私钥
+    k_s: Scalar,        # 盲化因子
+    s: int,             # 签名者索引
+    message: bytes,     # 消息
+    ring: List[Point]   # 公钥环 [P_0, ..., P_{n-1}]
+) -> Tuple[Point, PedersenRingProof]:
+    """
+    Pedersen Ring VRF 证明生成
+    """
+    n = len(ring)
+    
+    # Step 1: 计算 VRF 输出
+    H_msg = hash_to_curve(message)
+    Y = x_s * H_msg
+    
+    # Step 2: 真实分支承诺 (3 个承诺点)
+    r = random_scalar()
+    t = random_scalar()
+    
+    A = [None] * n  # 对应公钥的承诺
+    B = [None] * n  # 对应 VRF 输出的承诺
+    
+    A[s] = r * G + t * H       # 公钥承诺
+    B[s] = r * H_msg           # VRF 承诺
+    
+    # Step 3: 启动挑战链
+    c = [None] * n
+    z_x = [None] * n
+    z_k = [None] * n
+    
+    c[(s + 1) % n] = hash_challenge(message, ring, Y, A[s], B[s])
+    
+    # Step 4: 伪造其他分支
+    for j in range(1, n):
+        i = (s + j) % n
+        next_i = (i + 1) % n
+        
+        # 随机选择响应值 (两个!)
+        z_x[i] = random_scalar()
+        z_k[i] = random_scalar()
+        
+        # 伪造承诺 (关键差异: 3 条验证方程)
+        # 方程1: z_x·G + z_k·H = A + c·P
+        A[i] = z_x[i] * G + z_k[i] * H - c[i] * ring[i]
+        
+        # 方程2: z_x·H_msg = B + c·Y
+        B[i] = z_x[i] * H_msg - c[i] * Y
+        
+        # 推进挑战
+        c[next_i] = hash_challenge(message, ring, Y, A[i], B[i])
+    
+    # Step 5: 真实响应 (两个响应值!)
+    z_x[s] = (r + c[s] * x_s) % q
+    z_k[s] = (t + c[s] * k_s) % q
+    
+    # 输出
+    beta = hash_output(Y)
+    proof = PedersenRingProof(
+        c_0=c[0],
+        z_x=z_x,
+        z_k=z_k,
+        Y=Y
+    )
+    
+    return (beta, proof)
+```
+
+##### 验证算法
+
+```python
+def pedersen_ring_vrf_verify(
+    message: bytes,
+    ring: List[Point],
+    beta: bytes,
+    proof: PedersenRingProof
+) -> bool:
+    """
+    Pedersen Ring VRF 验证
+    """
+    c_0, z_x, z_k, Y = proof.c_0, proof.z_x, proof.z_k, proof.Y
+    n = len(ring)
+    
+    # 检查 beta
+    if beta != hash_output(Y):
+        return False
+    
+    # 计算 H_msg
+    H_msg = hash_to_curve(message)
+    
+    # 重建挑战链
+    c = c_0
+    for i in range(n):
+        # 重建承诺 (使用 3 条验证方程)
+        # 方程1: A_i = z_x·G + z_k·H - c·P_i
+        A_i = z_x[i] * G + z_k[i] * H - c * ring[i]
+        
+        # 方程2: B_i = z_x·H_msg - c·Y
+        B_i = z_x[i] * H_msg - c * Y
+        
+        # 推进挑战
+        c = hash_challenge(message, ring, Y, A_i, B_i)
+    
+    # 检查闭环
+    return c == c_0
+```
+
+##### 环状结构对比图
+
+```mermaid
+flowchart TB
+    subgraph Standard["标准 Ring VRF (前文)"]
+        direction LR
+        
+        subgraph S_Real["真实分支 s"]
+            SR1["R = uG"]
+            SR2["T = uH_msg"]
+            SR3["z = u + cx"]
+        end
+        
+        subgraph S_Fake["伪造分支 i≠s"]
+            SF1["z 随机"]
+            SF2["R = zG - cP"]
+            SF3["T = zH_msg - cY"]
+        end
+        
+        S_Real -->|"1个z"| S_Fake
+    end
+    
+    subgraph Pedersen["Pedersen Ring VRF (Bandersnatch)"]
+        direction LR
+        
+        subgraph P_Real["真实分支 s"]
+            PR1["A = rG + tH"]
+            PR2["B = rH_msg"]
+            PR3["z_x = r + cx"]
+            PR4["z_k = t + ck"]
+        end
+        
+        subgraph P_Fake["伪造分支 i≠s"]
+            PF1["z_x, z_k 随机"]
+            PF2["A = z_x·G + z_k·H - cP"]
+            PF3["B = z_x·H_msg - cY"]
+        end
+        
+        P_Real -->|"2个z"| P_Fake
+    end
+    
+    style Standard fill:#e1f5fe
+    style Pedersen fill:#f3e5f5
+```
+
+##### 证明大小对比
+
+| 组件 | 标准 Ring VRF | Pedersen Ring VRF |
+|------|--------------|-------------------|
+| VRF 输出 $Y$ | 1 点 (32B) | 1 点 (32B) |
+| 初始挑战 $c_0$ | 1 标量 (32B) | 1 标量 (32B) |
+| 响应值 | $n$ 个 $z_i$ (32n B) | $2n$ 个 $(z_{x,i}, z_{k,i})$ (64n B) |
+| **总大小** | $32n + 64$ B | $64n + 64$ B |
+| **n=1024 时** | ~32 KB | ~64 KB |
+
+#### 5.4 为什么 Bandersnatch 使用 Pedersen 形式
+
+```mermaid
+flowchart TD
+    subgraph Reasons["Pedersen 形式的优势"]
+        direction TB
+        
+        R1["公钥可更新<br/>P' = P + rH"]
+        R2["盲化因子提供额外隐私"]
+        R3["与 SNARK 兼容<br/>便于零知识证明"]
+        R4["支持密钥重随机化"]
+    end
+    
+    subgraph JAM_Benefits["JAM 中的好处"]
+        direction TB
+        
+        J1["验证者可更新密钥<br/>不改变身份"]
+        J2["增强匿名性"]
+        J3["未来可扩展到 ZK-SNARK"]
+    end
+    
+    Reasons --> JAM_Benefits
+    
+    style Reasons fill:#e1f5fe
+    style JAM_Benefits fill:#e8f5e8
+```
+
+#### 5.5 完整证明总结
+
+完整的 Bandersnatch Pedersen Ring VRF 证明需要同时证明：
+
+1. **公钥绑定**：证明者知道 $(x, k)$ 使得 $P = xG + kH$
+2. **VRF 正确性**：$Y = x \cdot H_{msg}$
+3. **环成员资格**：证明者拥有环中某个公钥的私钥（但不透露是哪个）
+
+```mermaid
+flowchart LR
+    subgraph Proof["Pedersen Ring VRF 证明内容"]
+        direction TB
+        
+        Eq1["方程 1: z_x·G + z_k·H = A + c·P<br/>(Pedersen 公钥绑定)"]
+        Eq2["方程 2: z_x·H_msg = B + c·Y<br/>(VRF 正确性)"]
+        Eq3["方程 3: 环状挑战链闭合<br/>(匿名性)"]
+    end
+    
+    Proof --> ZK["零知识性质：<br/>不泄露 x, k, 或具体索引 s"]
+    
+    style Proof fill:#e1f5fe
+    style ZK fill:#e8f5e8
+```
+
+#### 5.6 标准 Ring VRF vs Pedersen Ring VRF 完整对比
+
+```mermaid
+flowchart TB
+    subgraph Comparison["两种 Ring VRF 实现对比"]
+        direction TB
+        
+        subgraph Std["标准 Ring VRF (第8节)"]
+            S1["公钥: P = xG"]
+            S2["承诺: R = kG, T = kH"]
+            S3["验证: 2 条方程"]
+            S4["响应: 1 个 z"]
+        end
+        
+        subgraph Ped["Pedersen Ring VRF (Bandersnatch)"]
+            P1["公钥: P = xG + kH"]
+            P2["承诺: A = rG + tH, B = rH_msg"]
+            P3["验证: 2 条方程 (但涉及 2 个秘密)"]
+            P4["响应: 2 个 z_x, z_k"]
+        end
+    end
+    
+    style Std fill:#e1f5fe
+    style Ped fill:#f3e5f5
+```
+
+| 对比维度 | 标准 Ring VRF | Pedersen Ring VRF |
+|---------|--------------|-------------------|
+| **私钥** | 单个 $x$ | 双密钥 $(x, k)$ |
+| **公钥** | $P = xG$ | $P = xG + kH$ |
+| **每分支承诺点** | 2 个 | 2 个 |
+| **每分支响应值** | 1 个 | 2 个 |
+| **验证方程数** | 2 条 | 2 条 |
+| **证明大小** | $O(n)$ | $O(2n)$ |
+| **密钥可更新** | ❌ | ✅ $P' = P + rH$ |
+| **SNARK 友好** | ⚠️ | ✅ |
+| **使用场景** | 通用 Ring VRF | JAM/SAFROLE |
+
+### 6. JAM 中的 SAFROLE 协议
+
+SAFROLE (Seal And Finalize via Random Oracle Leader Election) 是 JAM 使用 Bandersnatch Ring VRF 实现的出块者选举协议。
+
+#### 6.1 协议流程
+
+```mermaid
+sequenceDiagram
+    participant V as 验证者集合
+    participant Chain as JAM 链
+    participant Block as 新区块
+    
+    Note over V,Block: Epoch 开始 (E)
+    
+    rect rgb(225, 245, 254)
+        Note over V: 票据提交阶段
+        V->>V: 计算 Ring VRF<br/>ticket = RingVRF(epoch_randomness)
+        V->>Chain: 提交票据 (匿名)
+        Chain->>Chain: 收集所有票据<br/>按 VRF 输出排序
+    end
+    
+    rect rgb(232, 245, 232)
+        Note over V,Block: Epoch E+1: 出块阶段
+        Chain->>V: 公布票据排序<br/>(出块顺序)
+        V->>V: 检查是否是我的时隙
+        V->>Block: 用 Bandersnatch 签名封印
+        Block->>Chain: 广播区块
+    end
+    
+    rect rgb(255, 243, 224)
+        Note over V,Block: 验证阶段
+        Chain->>Chain: 验证封印签名
+        Chain->>Chain: 验证票据与封印关联
+        Chain->>Chain: 更新状态
+    end
+```
+
+#### 6.2 抗 MEV 机制
+
+```mermaid
+flowchart TD
+    subgraph Traditional["传统方案 (以太坊)"]
+        T1["Epoch 开始"]
+        T2["出块顺序已知"]
+        T3["攻击者可预判"]
+        T4["MEV 提取"]
+        
+        T1 --> T2 --> T3 --> T4
+    end
+    
+    subgraph SAFROLE["SAFROLE 方案"]
+        S1["Epoch 开始"]
+        S2["提交匿名票据"]
+        S3["票据排序 = 出块顺序"]
+        S4["出块时才揭示身份"]
+        S5["无法预判出块者"]
+        
+        S1 --> S2 --> S3 --> S4 --> S5
+    end
+    
+    style T4 fill:#ffebee
+    style S5 fill:#e8f5e8
+```
+
+### 7. 密钥类型与上下文
+
+JAM 定义了多种密钥上下文，使用不同的 Bandersnatch 操作：
+
+| 密钥上下文 | 符号 | 算法 | 用途 |
+|-----------|------|------|------|
+| `jam_ticket_seal` | $\mathsf{X}_T$ | Bandersnatch RingVRF | 票据生成和常规区块封印 |
+| `jam_fallback_seal` | $\mathsf{X}_F$ | Bandersnatch 签名 | 回退区块封印 |
+| `jam_audit` | $\mathsf{X}_U$ | Bandersnatch VRF | 审计员选择熵 |
+
+### 8. 实现细节
+
+#### 8.1 HashToCurve
+
+Bandersnatch 使用的 HashToCurve 算法：
+
+```python
+def hash_to_bandersnatch(message: bytes, dst: bytes) -> Point:
+    """
+    将任意消息哈希到 Bandersnatch 曲线点
+    
+    参数:
+        message: 输入消息
+        dst: 域分隔标签 (Domain Separation Tag)
+    
+    返回:
+        曲线上的点
+    """
+    # 1. 使用 BLAKE2b 扩展输入
+    u0 = hash_to_field(message, dst, 0)
+    u1 = hash_to_field(message, dst, 1)
+    
+    # 2. 使用 Elligator2 映射到曲线
+    Q0 = map_to_curve_elligator2(u0)
+    Q1 = map_to_curve_elligator2(u1)
+    
+    # 3. 相加并清余因子
+    R = Q0 + Q1
+    return clear_cofactor(R)
+```
+
+#### 8.2 Ring VRF 签名
+
+```python
+def bandersnatch_ring_vrf_sign(
+    secret_key: Scalar,
+    signer_index: int,
+    message: bytes,
+    ring: List[Point],
+    aux_data: bytes
+) -> Tuple[Point, RingProof]:
+    """
+    Bandersnatch Ring VRF 签名
+    
+    参数:
+        secret_key: 签名者私钥
+        signer_index: 签名者在环中的索引
+        message: 消息
+        ring: 公钥环
+        aux_data: 辅助数据 (用于票据)
+    
+    返回:
+        (VRF输出点 Y, 环证明)
+    """
+    # 1. 计算 VRF 输出
+    H_msg = hash_to_bandersnatch(message, b"jam_ticket")
+    Y = secret_key * H_msg
+    
+    # 2. 生成环证明
+    proof = generate_ring_proof(
+        secret_key, 
+        signer_index, 
+        ring, 
+        H_msg, 
+        Y,
+        aux_data
+    )
+    
+    return (Y, proof)
+```
+
+#### 8.3 验证
+
+```python
+def bandersnatch_ring_vrf_verify(
+    message: bytes,
+    ring: List[Point],
+    vrf_output: Point,
+    proof: RingProof,
+    aux_data: bytes
+) -> bool:
+    """
+    验证 Bandersnatch Ring VRF
+    
+    返回:
+        True 如果验证通过
+    """
+    # 1. 重新计算 H_msg
+    H_msg = hash_to_bandersnatch(message, b"jam_ticket")
+    
+    # 2. 验证环证明
+    return verify_ring_proof(ring, H_msg, vrf_output, proof, aux_data)
+```
+
+### 9. 性能对比
+
+```mermaid
+flowchart LR
+    subgraph Curves["曲线性能对比"]
+        direction TB
+        
+        subgraph BLS["BLS12-381 G1"]
+            BLS_Add["点加: ~0.8 µs"]
+            BLS_Mul["标量乘: ~300 µs"]
+        end
+        
+        subgraph Ed["Ed25519"]
+            Ed_Add["点加: ~0.4 µs"]
+            Ed_Mul["标量乘: ~50 µs"]
+        end
+        
+        subgraph Band["Bandersnatch"]
+            Band_Add["点加: ~0.5 µs"]
+            Band_Mul["标量乘: ~60 µs"]
+            Band_Ring["Ring VRF: ~n×120 µs"]
+        end
+    end
+    
+    style Band fill:#e8f5e8
+```
+
+| 操作 | Bandersnatch | Ed25519 | BLS12-381 G1 |
+|------|-------------|---------|--------------|
+| 点加法 | ~0.5 µs | ~0.4 µs | ~0.8 µs |
+| 标量乘法 | ~60 µs | ~50 µs | ~300 µs |
+| VRF Prove | ~150 µs | ~120 µs | N/A |
+| VRF Verify | ~200 µs | ~180 µs | N/A |
+| Ring VRF (n=1024) | ~120 ms | N/A | N/A |
+
+### 10. 安全性分析
+
+```mermaid
+flowchart TD
+    subgraph Security["Bandersnatch 安全性"]
+        direction TB
+        
+        subgraph Assumptions["安全假设"]
+            A1["离散对数问题 (DLP)"]
+            A2["计算 Diffie-Hellman (CDH)"]
+            A3["决策 Diffie-Hellman (DDH)"]
+        end
+        
+        subgraph Level["安全级别"]
+            L1["约 126 bit 安全性"]
+            L2["与 BLS12-381 一致"]
+        end
+        
+        subgraph Properties["保证属性"]
+            P1["不可伪造性"]
+            P2["匿名性"]
+            P3["唯一性"]
+            P4["伪随机性"]
+        end
+    end
+    
+    Assumptions --> Level --> Properties
+    
+    style Assumptions fill:#e1f5fe
+    style Level fill:#fff3e0
+    style Properties fill:#e8f5e8
+```
+
+### 11. 与其他曲线的对比
+
+| 特性 | Bandersnatch | Curve25519 | secp256k1 | BLS12-381 |
+|------|-------------|------------|-----------|-----------|
+| **形式** | 扭曲 Edwards | Montgomery/Edwards | Weierstrass | 配对友好 |
+| **标量域** | BLS12-381 Fr | 独立 | 独立 | 独立 |
+| **安全级别** | ~126 bit | ~128 bit | ~128 bit | ~126 bit |
+| **VRF 支持** | ✅ 原生 | ✅ 需扩展 | ✅ 需扩展 | ❌ |
+| **Ring VRF** | ✅ 原生优化 | ⚠️ 可行但慢 | ⚠️ 可行但慢 | ❌ |
+| **SNARK 友好** | ✅ | ⚠️ | ❌ | ✅ |
+| **配对运算** | ❌ | ❌ | ❌ | ✅ |
+
+### 12. 总结
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                  Bandersnatch Ring VRF 核心要点                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  🔐 曲线设计                                                             │
+│     - 扭曲 Edwards 形式，高效运算                                        │
+│     - 构建在 BLS12-381 标量域上，便于集成                                │
+│     - 专为 Ring VRF 优化                                                 │
+│                                                                         │
+│  🎯 JAM/SAFROLE 应用                                                    │
+│     - 匿名票据提交实现抗 MEV                                             │
+│     - 出块者身份延迟揭示                                                 │
+│     - 验证者无法预测下一个出块者                                         │
+│                                                                         │
+│  ⚡ 性能特点                                                             │
+│     - 标量乘法 ~60µs (接近 Ed25519)                                      │
+│     - Ring VRF 随环大小线性增长                                          │
+│     - 比通用环签名方案更高效                                             │
+│                                                                         │
+│  🛡️ 安全保证                                                            │
+│     - ~126 bit 安全性                                                   │
+│     - 不可伪造、匿名、唯一、伪随机                                       │
+│     - 与 BLS12-381 安全假设一致                                         │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 参考资料
+
+1. **Bandersnatch 论文**：
+   - Masson, S., Sanso, A., & Zhang, Z. (2021). [Bandersnatch: a fast elliptic curve built over the BLS12-381 scalar field](https://eprint.iacr.org/2021/1152)
+
+2. **Ring VRF 论文**：
+   - Burdges, J. et al. (2023). [Ring Verifiable Random Functions and Zero-Knowledge Continuations](https://eprint.iacr.org/2023/002)
+
+3. **JAM Gray Paper**：
+   - Wood, G. (2025). [JAM: Join-Accumulate Machine](https://graypaper.com/)
+
+4. **Bandersnatch VRF 规范**：
+   - Hosseini, S. & Galassi, D. (2024). [Bandersnatch VRF-AD Specification](https://github.com/davxy/bandersnatch-vrfs-spec)
+
+5. **实现库**：
+   - [Arkworks Bandersnatch](https://github.com/arkworks-rs/curves)
+   - [W3F Ring VRF](https://github.com/w3f/ring-vrf)
