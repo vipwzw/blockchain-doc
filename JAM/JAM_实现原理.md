@@ -283,9 +283,350 @@ flowchart TB
 
 ---
 
-## 五、数据可用性
+## 五、状态管理模型
 
-### 5.1 纠删码机制
+### 5.1 状态架构概述
+
+JAM 采用**分离式服务状态**模型，与以太坊的单一全局状态树有本质区别。
+
+```mermaid
+flowchart TB
+    subgraph JAM_State[JAM 状态架构]
+        Core[JAM Core<br/>协调层]
+        
+        subgraph GlobalMeta[全局元数据]
+            Registry[服务注册表]
+            Balances[服务余额]
+            Queue[Transfer队列]
+            Validators[验证者集合]
+        end
+        
+        subgraph Services[服务状态 - 完全隔离]
+            S1[服务1状态<br/>独立存储空间]
+            S2[服务2状态<br/>独立存储空间]
+            S3[服务3状态<br/>独立存储空间]
+        end
+        
+        Core --> GlobalMeta
+        Core -.->|只能通过Transfer交互| Services
+    end
+```
+
+### 5.2 与以太坊状态模型对比
+
+```mermaid
+flowchart TB
+    subgraph Ethereum[以太坊: 单一全局状态树]
+        GST[Global State Trie<br/>全局状态树]
+        A1[账户1]
+        A2[账户2]
+        C1[合约1存储]
+        C2[合约2存储]
+        GST --> A1
+        GST --> A2
+        GST --> C1
+        GST --> C2
+        
+        C1 <-.->|可直接读取| C2
+    end
+    
+    subgraph JAM_Model[JAM: 分离式服务状态]
+        JC[JAM Core]
+        JS1[服务1状态]
+        JS2[服务2状态]
+        JS3[服务3状态]
+        
+        JC -.-> JS1
+        JC -.-> JS2
+        JC -.-> JS3
+        
+        JS1 x--x|无法直接访问| JS2
+        JS2 x--x|无法直接访问| JS3
+    end
+```
+
+| 特性 | 以太坊 | JAM |
+|------|--------|-----|
+| **状态结构** | 单一 Merkle Patricia Trie | 每个服务独立状态空间 |
+| **状态根** | 单一全局状态根 | 每个服务有独立状态根 |
+| **跨合约/服务访问** | 合约可 `SLOAD` 读取其他合约存储 | 服务完全无法访问其他服务状态 |
+| **状态可见性** | 全局可见 | 仅服务内部可见 |
+| **并行执行** | 受全局状态锁限制 | 不同服务可完全并行 |
+| **状态证明** | 统一的 Merkle 证明 | 分离的服务状态证明 |
+
+### 5.3 JAM 状态分层
+
+```rust
+// JAM Core 维护的全局状态
+struct JAMCoreState {
+    /// 服务注册表
+    services: HashMap<ServiceId, ServiceMetadata>,
+    
+    /// 服务余额 (用于支付 gas)
+    balances: HashMap<ServiceId, Balance>,
+    
+    /// 待处理的跨服务转账队列
+    pending_transfers: Vec<Transfer>,
+    
+    /// 验证者集合
+    validators: ValidatorSet,
+    
+    /// 共识状态
+    consensus: ConsensusState,
+}
+
+// 每个服务独立维护的状态
+struct ServiceState {
+    /// 服务自定义的状态数据
+    /// 完全由服务自己定义和管理
+    data: Vec<u8>,  // 或任意序列化格式
+    
+    /// 状态根哈希
+    state_root: Hash,
+}
+```
+
+### 5.4 状态访问规则
+
+```mermaid
+flowchart LR
+    subgraph Refine[Refine阶段]
+        R[无状态计算]
+        R -->|❌ 不能访问| State
+    end
+    
+    subgraph Accumulate[Accumulate阶段]
+        A[状态转换]
+        A -->|✅ 只能访问自己的| OwnState[本服务状态]
+        A -->|❌ 不能访问| OtherState[其他服务状态]
+    end
+    
+    State[任何状态]
+```
+
+**关键规则：**
+
+| 阶段 | 状态访问权限 |
+|------|-------------|
+| **Refine** | 完全无状态，不能读取任何状态 |
+| **Accumulate** | 只能读写**本服务**的状态 |
+| **跨服务** | 必须通过 Transfer 消息异步通信 |
+
+### 5.5 状态持久化机制
+
+```mermaid
+sequenceDiagram
+    participant S as 服务
+    participant Core as JAM Core
+    participant DA as 数据可用性层
+    participant V as 验证者存储
+    
+    Note over S,V: 状态更新流程
+    S->>S: accumulate() 修改状态
+    S->>Core: 提交新状态根
+    Core->>DA: 状态差异纠删码编码
+    DA->>V: 分片存储到验证者
+    
+    Note over S,V: 状态查询流程
+    S->>Core: 请求状态
+    Core->>V: 收集分片
+    V->>Core: 返回分片
+    Core->>S: 重建完整状态
+```
+
+---
+
+## 六、与微服务架构对比
+
+JAM 的设计理念与传统微服务架构有很多相似之处，但也有关键的区别。
+
+### 6.1 架构对比图
+
+```mermaid
+flowchart TB
+    subgraph Microservices[传统微服务架构]
+        LB[负载均衡器]
+        GW[API Gateway]
+        
+        MS1[服务A<br/>+ 数据库A]
+        MS2[服务B<br/>+ 数据库B]
+        MS3[服务C<br/>+ 数据库C]
+        
+        MQ[消息队列<br/>Kafka/RabbitMQ]
+        
+        LB --> GW
+        GW --> MS1
+        GW --> MS2
+        GW --> MS3
+        MS1 <--> MQ
+        MS2 <--> MQ
+        MS3 <--> MQ
+    end
+    
+    subgraph JAM_Arch[JAM 架构]
+        JC[JAM Core<br/>共识+协调]
+        
+        JS1[服务A<br/>+ 独立状态]
+        JS2[服务B<br/>+ 独立状态]
+        JS3[服务C<br/>+ 独立状态]
+        
+        JC --> JS1
+        JC --> JS2
+        JC --> JS3
+        JS1 -.->|Transfer| JC
+        JS2 -.->|Transfer| JC
+        JS3 -.->|Transfer| JC
+    end
+```
+
+### 6.2 相似之处
+
+| 特性 | 微服务 | JAM | 说明 |
+|------|--------|-----|------|
+| **服务隔离** | ✅ 每个服务独立进程 | ✅ 每个服务独立状态空间 | 故障隔离，一个服务崩溃不影响其他服务 |
+| **独立数据存储** | ✅ 每个服务有自己的数据库 | ✅ 每个服务有独立状态 | 数据自治，避免共享数据库的耦合 |
+| **异步通信** | ✅ 消息队列/事件驱动 | ✅ Transfer 消息传递 | 松耦合，服务间不直接调用 |
+| **独立部署** | ✅ 可单独部署服务 | ✅ 可单独升级服务代码 | 灵活迭代，不影响整体系统 |
+| **技术栈自由** | ✅ 每个服务可用不同语言 | ⚠️ 必须编译为 PVM (类似WASM) | JAM 有执行环境约束 |
+| **水平扩展** | ✅ 按服务扩展实例 | ✅ 按服务分配计算资源 | 根据负载独立扩展 |
+
+### 6.3 关键差异
+
+```mermaid
+flowchart TB
+    subgraph Diff1[差异1: 共识机制]
+        MS1_No[微服务: ❌ 无全局共识]
+        JAM1_Yes[JAM: ✅ SAFROLE+GRANDPA全局共识]
+    end
+    
+    subgraph Diff2[差异2: 一致性保证]
+        MS2[微服务: 最终一致性<br/>需要Saga模式]
+        JAM2[JAM: 强一致性<br/>共识层原子保证]
+    end
+    
+    subgraph Diff3[差异3: 安全模型]
+        MS3[微服务: 认证授权<br/>网络安全]
+        JAM3[JAM: 经济安全<br/>质押+惩罚]
+    end
+    
+    subgraph Diff4[差异4: 执行确定性]
+        MS4[微服务: 非确定性<br/>依赖外部状态]
+        JAM4[JAM: 确定性执行<br/>相同输入=相同输出]
+    end
+```
+
+| 维度 | 微服务 | JAM |
+|------|--------|-----|
+| **共识机制** | 无全局共识，依赖各服务自身逻辑 | SAFROLE+GRANDPA 全局共识 |
+| **一致性模型** | 最终一致性 (Eventually Consistent) | 强一致性 (由共识保证) |
+| **事务处理** | Saga 模式 / 2PC / TCC | 协议层原子性保证 |
+| **消息可靠性** | 依赖 MQ 配置 (at-least-once等) | 协议保证 exactly-once |
+| **安全模型** | 认证、授权、网络隔离 | 经济安全 (质押+Slashing) |
+| **信任假设** | 信任基础设施和运维 | 信任密码学和经济激励 |
+| **故障处理** | 熔断、重试、降级 | 验证者冗余 + 纠删码 |
+| **执行环境** | 任意 (JVM, Node, Go...) | 确定性 PVM (Polkadot VM) |
+| **状态可审计** | 困难，需要额外日志 | 原生支持，所有状态上链 |
+| **不可篡改性** | ❌ 管理员可修改数据库 | ✅ 共识确认后不可篡改 |
+
+### 6.4 跨服务事务对比
+
+#### 微服务: Saga 模式
+
+```mermaid
+sequenceDiagram
+    participant O as 订单服务
+    participant P as 支付服务
+    participant I as 库存服务
+    
+    O->>O: 1. 创建订单
+    O->>P: 2. 扣款请求
+    P->>P: 执行扣款
+    P-->>O: 扣款成功
+    O->>I: 3. 扣减库存
+    I->>I: 执行扣减
+    I-->>O: 扣减失败!
+    
+    Note over O,I: 补偿事务
+    O->>P: 4. 退款请求
+    P->>P: 执行退款
+    O->>O: 5. 取消订单
+```
+
+**问题：** 需要手动编写补偿逻辑，存在中间状态
+
+#### JAM: 原生原子性
+
+```mermaid
+sequenceDiagram
+    participant O as 订单服务
+    participant Core as JAM Core
+    participant P as 支付服务
+    participant I as 库存服务
+    
+    Note over O,I: 区块 N
+    O->>Core: Transfer(扣款, 扣库存)
+    
+    Note over O,I: 区块 N+1
+    Core->>P: on_transfer(扣款)
+    Core->>I: on_transfer(扣库存)
+    
+    alt 全部成功
+        P-->>Core: ✅ 成功
+        I-->>Core: ✅ 成功
+        Core->>O: 确认完成
+    else 任一失败
+        Core->>Core: 自动回滚
+        Core->>O: Transfer 退回
+    end
+```
+
+**优势：** 协议层保证原子性，无需补偿逻辑
+
+### 6.5 设计理念对比
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        设计理念对比                                      │
+├──────────────────────────────┬──────────────────────────────────────────┤
+│          微服务               │                 JAM                      │
+├──────────────────────────────┼──────────────────────────────────────────┤
+│                              │                                          │
+│  🎯 目标: 应对复杂业务         │  🎯 目标: 去中心化通用计算                │
+│                              │                                          │
+│  📦 部署: 容器/K8s            │  📦 部署: 链上服务注册                    │
+│                              │                                          │
+│  🔒 信任: 运维团队            │  🔒 信任: 密码学 + 经济激励               │
+│                              │                                          │
+│  💾 存储: 各自数据库          │  💾 存储: 验证者分片存储                  │
+│                              │                                          │
+│  📡 通信: HTTP/gRPC/MQ       │  📡 通信: Transfer 消息                   │
+│                              │                                          │
+│  ⚡ 扩展: 水平扩展实例         │  ⚡ 扩展: 购买更多 Core Time              │
+│                              │                                          │
+│  🛡️ 容错: 熔断/重试           │  🛡️ 容错: 共识冗余                       │
+│                              │                                          │
+│  👁️ 可见性: 需要日志/监控     │  👁️ 可见性: 链上透明可审计               │
+│                              │                                          │
+└──────────────────────────────┴──────────────────────────────────────────┘
+```
+
+### 6.6 何时选择哪种架构
+
+| 场景 | 推荐架构 | 原因 |
+|------|---------|------|
+| 企业内部系统 | 微服务 | 信任内部运维，无需去中心化 |
+| 需要快速迭代 | 微服务 | 部署更灵活，迭代更快 |
+| 高吞吐量场景 | 微服务 | 无共识开销 |
+| 需要去信任化 | JAM | 经济安全，无需信任第三方 |
+| 跨组织协作 | JAM | 共识保证各方利益 |
+| 资产/金融类应用 | JAM | 不可篡改，可审计 |
+| 需要原子性跨服务事务 | JAM | 协议层原生支持 |
+
+---
+
+## 七、数据可用性
+
+### 7.1 纠删码机制
 
 ```mermaid
 flowchart TB
@@ -318,7 +659,7 @@ flowchart TB
     C6 --> V6
 ```
 
-### 5.2 重建数据
+### 7.2 重建数据
 
 **关键特性：** 只需 1/3 验证者响应即可重建完整数据
 
@@ -338,9 +679,9 @@ flowchart LR
 
 ---
 
-## 六、共识机制
+## 八、共识机制
 
-### 6.1 混合共识
+### 8.1 混合共识
 
 JAM 使用 **SAFROLE + GRANDPA** 混合共识：
 
@@ -363,7 +704,7 @@ flowchart LR
     Production --> Finality
 ```
 
-### 6.2 SAFROLE
+### 8.2 SAFROLE
 
 **S**eal **A**nd **F**inalize via **R**andom **O**racle **L**eader **E**lection
 
@@ -371,7 +712,7 @@ flowchart LR
 - 抗 MEV（矿工可提取价值）
 - 区块时间：6 秒
 
-### 6.3 GRANDPA
+### 8.3 GRANDPA
 
 - 拜占庭容错最终性协议
 - 需要 2/3+ 验证者签名
@@ -379,9 +720,9 @@ flowchart LR
 
 ---
 
-## 七、安全模型
+## 九、安全模型
 
-### 7.1 安全架构
+### 9.1 安全架构
 
 ```mermaid
 flowchart TB
@@ -407,7 +748,7 @@ flowchart TB
     Consensus --> Audit
 ```
 
-### 7.2 安全假设
+### 9.2 安全假设
 
 | 假设 | 描述 |
 |------|------|
@@ -415,7 +756,7 @@ flowchart TB
 | **经济理性** | 作恶成本 > 收益 |
 | **数据可用** | 至少 1/3 验证者在线 |
 
-### 7.3 攻击防护
+### 9.3 攻击防护
 
 | 攻击类型 | 防护措施 |
 |---------|---------|
@@ -426,9 +767,9 @@ flowchart TB
 
 ---
 
-## 八、服务接口规范
+## 十、服务接口规范
 
-### 8.1 完整服务接口
+### 10.1 完整服务接口
 
 ```rust
 trait Service {
@@ -458,7 +799,7 @@ trait Service {
 }
 ```
 
-### 8.2 Work Package 结构
+### 10.2 Work Package 结构
 
 ```rust
 struct WorkPackage {
@@ -480,9 +821,9 @@ struct WorkItem {
 
 ---
 
-## 九、与传统跨链桥对比
+## 十一、与传统跨链桥对比
 
-### 9.1 架构对比
+### 11.1 架构对比
 
 ```mermaid
 flowchart TB
@@ -509,7 +850,7 @@ flowchart TB
     end
 ```
 
-### 9.2 详细对比
+### 11.2 详细对比
 
 | 维度 | 传统跨链桥 | JAM |
 |------|-----------|-----|
@@ -524,9 +865,9 @@ flowchart TB
 
 ---
 
-## 十、总结
+## 十二、总结
 
-### 10.1 JAM 核心要点
+### 12.1 JAM 核心要点
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -557,7 +898,7 @@ flowchart TB
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 10.2 JAM 的意义
+### 12.2 JAM 的意义
 
 **JAM 重新定义了"跨链"：**
 
