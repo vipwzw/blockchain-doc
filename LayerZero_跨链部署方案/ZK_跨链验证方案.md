@@ -63,7 +63,7 @@ flowchart TB
         Aggregator[证明聚合器]
     end
 
-    subgraph TargetChain["目标链 (Conflux)"]
+    subgraph TargetChain["目标链 (Chain33)"]
         LightClient[轻客户端合约<br/>验证区块头]
         ZKVerifier[ZK Verifier<br/>验证证明]
         OFT[OFT 合约<br/>铸造代币]
@@ -411,7 +411,7 @@ fn main() {
     
     let public_inputs = CrossChainPublicInputs {
         src_chain_id: 1,        // Ethereum
-        dst_chain_id: 1030,     // Conflux
+        dst_chain_id: 1030,     // Chain33
         block_number: 19000000,
         block_hash: [0u8; 32],  // 实际区块哈希
         packet_hash: [0u8; 32], // PacketSent 事件哈希

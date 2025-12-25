@@ -23,12 +23,12 @@ flowchart TB
 
     subgraph External["外部依赖"]
         ETH[以太坊节点]
-        CFX[Conflux 节点]
+        Coin33[Chain33 节点]
         HSM[CloudHSM]
     end
 
     ETH --> Listener
-    CFX --> Listener
+    Coin33 --> Listener
     Listener --> Redis
     Redis --> Verifier
     Verifier --> Redis
@@ -36,7 +36,7 @@ flowchart TB
     Signer <--> HSM
     Signer --> Redis
     Redis --> Submitter
-    Submitter --> CFX
+    Submitter --> Coin33
 
     Listener --> Postgres
     Verifier --> Postgres
@@ -55,7 +55,7 @@ flowchart TB
             subgraph AWSPrivate["私有子网"]
                 DVN1[DVN Node #1]
                 ETH1[Geth Node]
-                CFX1[Conflux Node]
+                Coin331[Chain33 Node]
                 HSM1[CloudHSM]
             end
             AWSNAT[NAT Gateway]
@@ -67,7 +67,7 @@ flowchart TB
             subgraph AliPrivate["私有子网"]
                 DVN2[DVN Node #2]
                 ETH2[Geth Node]
-                CFX2[Conflux Node]
+                Coin332[Chain33 Node]
                 HSM2[密钥管理服务]
             end
             AliNAT[NAT 网关]
@@ -79,7 +79,7 @@ flowchart TB
             subgraph GCPPrivate["私有子网"]
                 DVN3[DVN Node #3]
                 ETH3[Geth Node]
-                CFX3[Conflux Node]
+                Coin333[Chain33 Node]
                 HSM3[Cloud HSM]
             end
             GCPNAT[Cloud NAT]
@@ -167,7 +167,7 @@ target_chains:
   conflux:
     chain_id: 1030
     eid: 30250
-    rpc_url: "http://10.0.2.102:8545"  # 内网 Conflux 节点
+    rpc_url: "http://10.0.2.102:8545"  # 内网 Chain33 节点
     contracts:
       endpoint: "0x..."
       receive_lib: "0x..."

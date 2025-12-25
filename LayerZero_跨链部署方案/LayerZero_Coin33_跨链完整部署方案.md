@@ -1,4 +1,4 @@
-# LayerZero + Conflux 跨链完整部署方案
+# LayerZero + Chain33 跨链完整部署方案
 
 ---
 
@@ -20,7 +20,7 @@
 
 ### 目标
 
-构建一个安全、去中心化的 LayerZero DVN（Decentralized Verifier Network），支持以太坊生态与 Conflux 之间的跨链资产转移。
+构建一个安全、去中心化的 LayerZero DVN（Decentralized Verifier Network），支持以太坊生态与 Chain33 之间的跨链资产转移。
 
 ### 核心特性
 
@@ -48,7 +48,7 @@ flowchart TB
         SrcEndpoint[Endpoint V2]
     end
 
-    subgraph TargetChain["目标链 (Conflux eSpace)"]
+    subgraph TargetChain["目标链 (Chain33 eSpace)"]
         OFT[OFT<br/>铸造 USDT0]
         ReceiveLib[ReceiveLib ULN302]
         DstEndpoint[Endpoint V2]
@@ -96,7 +96,7 @@ flowchart TB
 |------|---------|
 | **智能合约** | Solidity, Hardhat, LayerZero OFT V2 |
 | **DVN 服务** | Go / Rust, gRPC, Redis |
-| **区块链节点** | Geth (以太坊), Conflux-Rust |
+| **区块链节点** | Geth (以太坊), Chain33-Rust |
 | **HSM** | AWS CloudHSM, 阿里云密钥管理, Google Cloud KMS |
 | **网络** | VPC, VPN/专线, NAT Gateway |
 | **容器化** | Docker, Kubernetes |
@@ -109,7 +109,7 @@ flowchart TB
 |------|----:|-------:|-------------:|-----:|
 | **DVN 服务器** | $200 | $180 | $200 | $580 |
 | **以太坊节点** | $750 | $700 | $750 | $2,200 |
-| **Conflux 节点** | $200 | $180 | $200 | $580 |
+| **Chain33 节点** | $200 | $180 | $200 | $580 |
 | **HSM** | $1,500 | $1,000 | $400 | $2,900 |
 | **网络/带宽** | $200 | $150 | $200 | $550 |
 | **跨云专线** | $300 | $300 | $300 | $900 |
@@ -165,7 +165,7 @@ flowchart TB
             SrcEndpoint[Endpoint V2<br/>• 消息路由<br/>• nonce 管理]
         end
 
-        subgraph TargetChain["目标链 (Conflux eSpace)"]
+        subgraph TargetChain["目标链 (Chain33 eSpace)"]
             OFT[OFT<br/>• mint/burn<br/>• 管理 USDT0]
             ReceiveLib[ReceiveLib ULN302<br/>• 验证签名<br/>• 确认验证状态<br/>• 触发接收]
             DstEndpoint[Endpoint V2<br/>• 消息接收<br/>• 调用 lzReceive]
@@ -191,7 +191,7 @@ flowchart TB
     subgraph InfraLayer["基础设施层 (Infrastructure Layer)"]
         subgraph BlockchainNodes["区块链全节点集群"]
             Geth[Geth 节点 x3]
-            ConfluxNode[Conflux 节点 x3]
+            Chain33Node[Chain33 节点 x3]
             ArbNode[Arbitrum 节点]
             OpNode[Optimism 节点]
         end
@@ -225,7 +225,7 @@ flowchart TB
 
 ## 1.2 跨链消息流程
 
-### 1.2.1 完整跨链流程 (以太坊 → Conflux)
+### 1.2.1 完整跨链流程 (以太坊 → Chain33)
 
 ```mermaid
 sequenceDiagram
@@ -246,7 +246,7 @@ sequenceDiagram
     rect rgb(240, 248, 255)
         Note over User,SendLib: Step 1: 用户发起跨链
         User->>USDT: approve(adapter, 100 USDT)
-        User->>Adapter: send(dstEid=Conflux, to=用户, amount=100)
+        User->>Adapter: send(dstEid=Chain33, to=用户, amount=100)
         Adapter->>USDT: transferFrom(用户, adapter, 100)
         Note right of Adapter: 锁定 100 USDT
         Adapter->>Endpoint: send(dstEid, message, options)
@@ -433,7 +433,7 @@ flowchart TB
 flowchart LR
     subgraph DataSources["数据源"]
         ETH[以太坊节点]
-        CFX[Conflux 节点]
+        Coin33[Chain33 节点]
         ARB[Arbitrum 节点]
     end
 
@@ -454,7 +454,7 @@ flowchart LR
     end
 
     ETH --> Listener
-    CFX --> Listener
+    Coin33 --> Listener
     ARB --> Listener
     
     Listener --> Redis
@@ -464,7 +464,7 @@ flowchart LR
     Signer <--> CloudHSM
     Signer --> Redis
     Redis --> Submitter
-    Submitter --> CFX
+    Submitter --> Coin33
     
     Listener --> Postgres
     Verifier --> Postgres
@@ -491,7 +491,7 @@ flowchart TB
         end
     end
 
-    subgraph Conflux["Conflux eSpace (目标链)"]
+    subgraph Chain33["Chain33 eSpace (目标链)"]
         subgraph Deployed2["已部署 (LayerZero)"]
             CfxEndpoint[Endpoint V2]
             CfxReceiveLib[ReceiveLib ULN302]
@@ -530,7 +530,7 @@ contracts/
 │       └── ISendLib.sol
 ├── script/
 │   ├── DeployEthereum.s.sol    # 以太坊部署脚本
-│   ├── DeployConflux.s.sol     # Conflux 部署脚本
+│   ├── DeployChain33.s.sol     # Chain33 部署脚本
 │   └── ConfigureOApp.s.sol     # 配置脚本
 ├── test/
 │   └── OFT.t.sol
@@ -689,7 +689,7 @@ import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title USDT0
- * @notice Conflux 上的 USDT 包装代币
+ * @notice Chain33 上的 USDT 包装代币
  */
 contract USDT0 is OFT {
     
@@ -878,14 +878,14 @@ flowchart TD
     end
 
     subgraph Phase3["阶段 3: 部署目标链"]
-        C1[部署 Conflux USDT0]
+        C1[部署 Chain33 USDT0]
         C2[部署 CustomDVN]
-        C3[验证合约 ConfluxScan]
+        C3[验证合约 Chain33Scan]
     end
 
     subgraph Phase4["阶段 4: 配置"]
         D1[配置 Ethereum Peer]
-        D2[配置 Conflux Peer]
+        D2[配置 Chain33 Peer]
         D3[配置 DVN 设置]
         D4[设置 ReceiveLib]
     end
@@ -929,7 +929,7 @@ const config: HardhatUserConfig = {
       chainId: 1,
     },
     conflux: {
-      url: process.env.CFX_RPC_URL,
+      url: process.env.Coin33_RPC_URL,
       accounts: [process.env.DEPLOYER_PRIVATE_KEY!],
       chainId: 1030,
     },
@@ -978,7 +978,7 @@ async function main() {
   if (network === "ethereum" || network === "arbitrum") {
     await deployOFTAdapter(network, deployer);
   } else if (network === "conflux") {
-    await deployConfluxContracts(deployer);
+    await deployChain33Contracts(deployer);
   }
 }
 
@@ -993,7 +993,7 @@ async function deployOFTAdapter(network: string, deployer: any) {
   console.log("OFTAdapter:", await adapter.getAddress());
 }
 
-async function deployConfluxContracts(deployer: any) {
+async function deployChain33Contracts(deployer: any) {
   // 部署 OFT
   const OFT = await ethers.getContractFactory("USDT0");
   const oft = await OFT.deploy("USDT0", "USDT0", LZ_ENDPOINTS.conflux, deployer.address);
@@ -1025,9 +1025,9 @@ main().catch(console.error);
 | Ethereum | OFTAdapter | `0x...` |
 | Ethereum | Endpoint | `0x1a44076050125825900e736c501f859c50fE728c` |
 | Arbitrum | OFTAdapter | `0x...` |
-| Conflux | USDT0 | `0x...` |
-| Conflux | CustomDVN | `0x...` |
-| Conflux | Endpoint | `0x...` |
+| Chain33 | USDT0 | `0x...` |
+| Chain33 | CustomDVN | `0x...` |
+| Chain33 | Endpoint | `0x...` |
 
 ---
 
@@ -1056,12 +1056,12 @@ flowchart TB
 
     subgraph External["外部依赖"]
         ETH[以太坊节点]
-        CFX[Conflux 节点]
+        Coin33[Chain33 节点]
         HSM[CloudHSM]
     end
 
     ETH --> Listener
-    CFX --> Listener
+    Coin33 --> Listener
     Listener --> Redis
     Redis --> Verifier
     Verifier --> Redis
@@ -1069,7 +1069,7 @@ flowchart TB
     Signer <--> HSM
     Signer --> Redis
     Redis --> Submitter
-    Submitter --> CFX
+    Submitter --> Coin33
 
     Listener --> Postgres
     Verifier --> Postgres
@@ -1088,7 +1088,7 @@ flowchart TB
             subgraph AWSPrivate["私有子网"]
                 DVN1[DVN Node #1]
                 ETH1[Geth Node]
-                CFX1[Conflux Node]
+                Coin331[Chain33 Node]
                 HSM1[CloudHSM]
             end
             AWSNAT[NAT Gateway]
@@ -1100,7 +1100,7 @@ flowchart TB
             subgraph AliPrivate["私有子网"]
                 DVN2[DVN Node #2]
                 ETH2[Geth Node]
-                CFX2[Conflux Node]
+                Coin332[Chain33 Node]
                 HSM2[密钥管理服务]
             end
             AliNAT[NAT 网关]
@@ -1112,7 +1112,7 @@ flowchart TB
             subgraph GCPPrivate["私有子网"]
                 DVN3[DVN Node #3]
                 ETH3[Geth Node]
-                CFX3[Conflux Node]
+                Coin333[Chain33 Node]
                 HSM3[Cloud HSM]
             end
             GCPNAT[Cloud NAT]
@@ -1168,7 +1168,7 @@ target_chains:
   conflux:
     chain_id: 1030
     eid: 30250
-    rpc_url: "http://10.0.2.102:8545"  # 内网 Conflux 节点
+    rpc_url: "http://10.0.2.102:8545"  # 内网 Chain33 节点
     contracts:
       endpoint: "0x..."
       receive_lib: "0x..."
@@ -1273,32 +1273,32 @@ flowchart TB
     subgraph NodeCluster["区块链节点集群"]
         subgraph AWS["AWS 美东"]
             ETH1[Geth 节点<br/>i3.2xlarge<br/>2TB NVMe]
-            CFX1[Conflux 节点<br/>m5.xlarge<br/>500GB SSD]
+            Coin331[Chain33 节点<br/>m5.xlarge<br/>500GB SSD]
         end
         
         subgraph Aliyun["阿里云 杭州"]
             ETH2[Geth 节点<br/>ecs.i2.2xlarge<br/>2TB NVMe]
-            CFX2[Conflux 节点<br/>ecs.g6.xlarge<br/>500GB SSD]
+            Coin332[Chain33 节点<br/>ecs.g6.xlarge<br/>500GB SSD]
         end
         
         subgraph GCP["Google Cloud 东京"]
             ETH3[Geth 节点<br/>n2-highmem-8<br/>2TB SSD]
-            CFX3[Conflux 节点<br/>e2-standard-4<br/>500GB SSD]
+            Coin333[Chain33 节点<br/>e2-standard-4<br/>500GB SSD]
         end
     end
 
     subgraph P2P["P2P 网络"]
         ETHNet[以太坊网络]
-        CFXNet[Conflux 网络]
+        Coin33Net[Chain33 网络]
     end
 
     ETH1 <--> ETHNet
     ETH2 <--> ETHNet
     ETH3 <--> ETHNet
     
-    CFX1 <--> CFXNet
-    CFX2 <--> CFXNet
-    CFX3 <--> CFXNet
+    Coin331 <--> Coin33Net
+    Coin332 <--> Coin33Net
+    Coin333 <--> Coin33Net
 ```
 
 ---
@@ -1316,7 +1316,7 @@ flowchart TB
 | 带宽 | 25 Mbps | 100 Mbps |
 | 同步时间 | 3-5 天 | 1-2 天 |
 
-### Conflux 节点
+### Chain33 节点
 
 | 配置项 | 最低要求 | 推荐配置 |
 |--------|---------|---------|
@@ -1338,12 +1338,12 @@ flowchart TB
     
     subgraph Primary["主节点"]
         ETH_Primary[Geth Primary]
-        CFX_Primary[Conflux Primary]
+        Coin33_Primary[Chain33 Primary]
     end
     
     subgraph Standby["备用节点"]
         ETH_Standby[Geth Standby]
-        CFX_Standby[Conflux Standby]
+        Coin33_Standby[Chain33 Standby]
     end
     
     subgraph HealthCheck["健康检查"]
@@ -1352,13 +1352,13 @@ flowchart TB
     
     HAProxy --> ETH_Primary
     HAProxy --> ETH_Standby
-    HAProxy --> CFX_Primary
-    HAProxy --> CFX_Standby
+    HAProxy --> Coin33_Primary
+    HAProxy --> Coin33_Standby
     
     HC --> ETH_Primary
     HC --> ETH_Standby
-    HC --> CFX_Primary
-    HC --> CFX_Standby
+    HC --> Coin33_Primary
+    HC --> Coin33_Standby
     HC --> HAProxy
 ```
 
@@ -1549,7 +1549,7 @@ flowchart TB
             subgraph AWSPrivate["私有子网 10.0.2.0/24"]
                 AWSDVN[DVN Node]
                 AWSETH[Geth Node]
-                AWSCFX[Conflux Node]
+                AWSCoin33[Chain33 Node]
                 AWSHSM[CloudHSM]
             end
         end
@@ -1564,7 +1564,7 @@ flowchart TB
             subgraph AliPrivate["内网子网 10.1.2.0/24"]
                 AliDVN[DVN Node]
                 AliETH[Geth Node]
-                AliCFX[Conflux Node]
+                AliCoin33[Chain33 Node]
                 AliHSM[KMS]
             end
         end
@@ -1579,7 +1579,7 @@ flowchart TB
             subgraph GCPPrivate["私有子网 10.2.2.0/24"]
                 GCPDVN[DVN Node]
                 GCPETH[Geth Node]
-                GCPCFX[Conflux Node]
+                GCPCoin33[Chain33 Node]
                 GCPHSM[Cloud HSM]
             end
         end
@@ -1664,7 +1664,7 @@ flowchart TB
     subgraph DataSources["数据源"]
         DVN[DVN 节点<br/>:8080/metrics]
         Geth[Geth 节点<br/>:6060/metrics]
-        Conflux[Conflux 节点<br/>:8080/metrics]
+        Chain33[Chain33 节点<br/>:8080/metrics]
         Redis[Redis<br/>:9121/metrics]
         Postgres[PostgreSQL<br/>:9187/metrics]
     end
@@ -1687,13 +1687,13 @@ flowchart TB
 
     DVN --> Prometheus
     Geth --> Prometheus
-    Conflux --> Prometheus
+    Chain33 --> Prometheus
     Redis --> Prometheus
     Postgres --> Prometheus
 
     DVN --> Loki
     Geth --> Loki
-    Conflux --> Loki
+    Chain33 --> Loki
 
     Prometheus --> Grafana
     Loki --> Grafana
